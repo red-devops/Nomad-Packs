@@ -1,0 +1,1 @@
+Congrats! You deployed the fabio pack on Nomad. On the [[ var "environment" . ]] environment in region [[ var "region" . ]] !

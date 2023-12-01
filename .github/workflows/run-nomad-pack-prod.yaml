@@ -1,0 +1,61 @@
+name: Run Nomad-Pack on prod
+on:
+  workflow_dispatch:
+    inputs:
+      pack-name:
+        type: choice
+        description: Pack name to deploy
+        required: true
+        options:
+          - fabio
+          - workoutrecorder_backend
+          - workoutrecorder_frontend
+      version:
+        description: App version to deploy
+        required: true
+        default: 1.0.0
+
+env:
+  ENVIRONMENT: prod
+  REGION: eu-central-1
+
+jobs:
+  deploy:
+    name: Run Nomad-Pack on prod
+    runs-on:
+      - self-hosted
+      - prod
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set NOMAD_ADDR
+        id: nomad_addr
+        run: |
+          NOMAD_ADDR=$(aws ec2 describe-instances \
+          --region ${{ env.REGION }} \
+          --filters "Name=tag:Name,Values=nomad-server-1-${{ env.ENVIRONMENT }}" \
+          --query 'Reservations[].Instances[].PrivateIpAddress' \
+          --output text | awk '{print $1}' )
+          echo "NOMAD_ADDR=http://$NOMAD_ADDR:4646" >> "$GITHUB_OUTPUT"
+
+      - name: Set NOMAD_TOKEN
+        id: nomad_token
+        run: |
+          NOMAD_TOKEN=$(aws secretsmanager get-secret-value \
+          --secret-id Nomad-Global-Managemen-Token-${{ env.ENVIRONMENT }} \
+          --region ${{ env.REGION }} | jq -r '.["SecretString"] | fromjson | ."acl-bootsrap-token"')
+          echo "::add-mask::$NOMAD_TOKEN"
+          echo "NOMAD_TOKEN=$NOMAD_TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Run Nomad-Pack ${{ github.event.inputs.pack-name }}
+        run: |
+          echo ${{ steps.nomad_addr.outputs.NOMAD_ADDR }}
+          nomad-pack run \
+          --var-file=packs/${{ github.event.inputs.pack-name }}/environments/${{ env.ENVIRONMENT }}.hcl \
+          -var=region=${{ env.REGION }} \
+          -var=docker_image_version=${{ github.event.inputs.version }} \
+          packs/${{ github.event.inputs.pack-name }}
+        env:
+          NOMAD_ADDR: ${{ steps.nomad_addr.outputs.NOMAD_ADDR }}
+          NOMAD_TOKEN: ${{steps.nomad_token.outputs.NOMAD_TOKEN }}

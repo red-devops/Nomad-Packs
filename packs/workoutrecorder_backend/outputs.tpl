@@ -1,0 +1,1 @@
+Congrats! You deployed the workoutrecorder_backend pack on Nomad. On the [[ var "environment" . ]] environment in region [[ var "region" . ]] !
